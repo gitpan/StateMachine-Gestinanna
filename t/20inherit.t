@@ -1,5 +1,7 @@
 use StateMachine::Gestinanna;
 
+######
+
 package My::First::Machine;
 
 @ISA=qw(StateMachine::Gestinanna);
@@ -23,6 +25,8 @@ package My::First::Machine;
     },
 );
 
+######
+
 package My::Second::Machine;
 
 @ISA=qw(StateMachine::Gestinanna);
@@ -38,9 +42,13 @@ package My::Second::Machine;
     }
 );
 
+######
+
 package My::Third::Machine;
 
 @ISA=qw(My::First::Machine My::Second::Machine);
+
+######
 
 package My::Fourth::Machine;
 
@@ -50,9 +58,22 @@ package My::Fourth::Machine;
     _INHERIT => 'SUPER',
 );
 
+######
+
+package My::Fifth::Machine;
+
+@ISA = qw(StateMachine::Gestinanna);
+
+%HASA = (
+    first => 'My::First::Machine',
+    second => 'My::Second::Machine'
+);
+
+######
+
 package main;
 
-print "1..4\n";
+print "1..6\n";
 
 my $sm;
 
@@ -105,5 +126,30 @@ if($sm2 -> state eq 'state1') {
     print "not ok 4\n";
 }
 
+my $sm3;
+
+eval {
+   $sm3 = My::Fifth::Machine -> new();
+};
+
+if($@) {
+    print "not ok 5\n";
+    print STDERR "$@\n";
+} else {
+    print "ok 5\n";
+}
+
+$sm3 -> state('first_start');
+
+$sm3 -> process({
+    'a.a' => 'a',
+    'a.b' => 'b',
+});
+
+if($sm3 -> state eq 'first_state1') {
+    print "ok 6\n";
+} else {
+    print "not ok 6\n";
+}
 
 exit 0;

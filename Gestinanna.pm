@@ -1,13 +1,13 @@
 package StateMachine::Gestinanna;
 
 use Data::FormValidator ();
-use Data::Dumper;  # here for testing/development - comment out for release
+#use Data::Dumper;  # here for testing/development - comment out for release
 use YAML ();
 
-$VERSION = '0.01';
+$VERSION = '0.02';
 
 { no warnings;
-$REVISION = sprintf("%d.%d", q$Id: Gestinanna.pm,v 1.5 2002/07/31 17:21:00 jgsmith Exp $ =~ m{(\d+).(\d+)});
+$REVISION = sprintf("%d.%d", q$Id: Gestinanna.pm,v 1.7 2002/08/02 16:24:01 jgsmith Exp $ =~ m{(\d+).(\d+)});
 }
 
 use strict;
@@ -24,26 +24,67 @@ sub _transit {
     my($self, $nstate) = @_;
 
     my $ostate = $self -> state;
+    my $code_run = 0;
+    my $pre_func = "pre_${nstate}";
 
     if($ostate) {
         my $trans_func = "${ostate}_to_${nstate}";
+        my $post_func = "post_${ostate}";
+
         if($self -> can($trans_func)) {
             $self -> $trans_func;
+            $code_run = 1;
         }
         else {
-            my($pre_func, $post_func) = (
-                "post_${ostate}",
-                "pre_${nstate}",
-            );
             $self -> $post_func if $self->can($post_func);
             $self -> $pre_func if $self->can($pre_func);
+            $code_run = 1 if $self->can($post_func) || $self->can($pre_func);
         }
     }
     else {
-        my $pre_func = "pre_${nstate}";
-        $self -> $pre_func if $self->can($pre_func);
+        if($self->can($pre_func)) {
+            $self -> $pre_func;
+            $code_run = 1;
+        }
     }
-    $self -> state($nstate);
+
+    unless($code_run) {
+        # check for hasa relationship
+        my $orig_class = ref $self || $self;
+
+        # looks like HASAs are expensive
+        my @ps = sort { length $b <=> length $a } keys %{"${orig_class}::HASA"};
+        foreach my $p (@ps) {
+            next unless $nstate =~ m{^${p}_};
+            my $c = ${"${orig_class}::HASA"}{$p};
+            bless $self => $c;
+            $nstate =~ s{^${p}_}{};
+            my $realoldstate = $ostate;
+            $ostate =~ s{^${p}_}{};
+            $self -> state($ostate);
+            eval {
+                $self -> _transit($nstate);
+                bless $self => $orig_class;
+                return $self -> state($p . "_" . $self->state);
+            };
+            if($@) {
+                bless $self => $orig_class;
+                $self -> state($realoldstate);
+                die $@ unless ref $@;
+                die $@ unless $@ -> isa('StateMachine::Gestinanna::Exception');
+                # should never get to the rest of this
+                throw StateMachine::Gestinanna::Exception (
+                    -state => $p . "_" . $@->state,
+                    -data => $@ -> data
+                );
+            }
+            $nstate = "${p}_$nstate";
+            bless $self => $orig_class;
+            $self -> state($realoldstate);
+            last;
+        }
+    }
+    return $self -> state($nstate);
 }
 
 # transit() will try to go to the new $nstate, and will process any ErrorState transitions requested
@@ -160,6 +201,7 @@ sub process {
                        keys %$args};
 
     $self -> clear_data('in');
+
     $self -> add_data('in', $args);
 
     my $best = $self -> select_state;
@@ -277,7 +319,7 @@ sub _generate_states {
     # able to inherit: SUPER, ALL, NONE (default for now)
     # need this at the state->state level
     $_ -> _generate_states foreach @{"${class}::ISA"};
-
+    ${"${class}::HASA"}{$_} -> _generate_states(${"${class}::HASA"}{$_}) foreach keys %{"${class}::HASA"};
 
     %{"${class}::EDGES_CACHE"} = ( );
 
@@ -293,14 +335,15 @@ sub _generate_states {
     {
         my %hash = map { $_ => 1 } (map { keys %{"${_}::EDGES_CACHE"} } @{"${class}::ISA"});
 
+
         @hash{grep { $_ ne '_INHERIT' } keys %$states} = ( );
 
         @states = keys %hash;
     }
 
     foreach my $state (@states) {
-        my $def = $states->{$state};
         next if $state eq '_INHERIT';
+        my $def = $states->{$state};
         my %cdef = ( );
         my @defs = ( );
         unshift @$inherit, ($def -> {_INHERIT}) if defined $def -> {_INHERIT};
@@ -317,6 +360,37 @@ sub _generate_states {
             $def
         );
         shift @$inherit if defined $def -> {_INHERIT};
+    }
+
+    while(my($p, $h) = each %{"${class}::HASA"}) {
+        @states = keys %{"${h}::EDGES_CACHE"};
+
+        foreach my $state (@states) {
+            next if $state eq '_INHERIT';
+            my $def = $states->{"${p}_${state}"};
+            my %cdef = ( );
+            my @defs = ( );
+            unshift @$inherit, ($def -> {_INHERIT}) if defined $def -> {_INHERIT};
+
+            @defs = ( 
+                      ${"${h}::EDGES_CACHE"}{$state},
+                      #grep { exists ${"${_}::EDGES_CACHE"}{"${p}_${state}"} } @{"${class}::ISA"}
+                    );
+            for($inherit->[0]) {
+                /^SUPER$/ && do { @defs = ($defs[0]); last; };
+                /^ALL$/ && last;
+                /^NONE$/ && do { @defs = ( ); last; };
+            }
+            my $tc = _merge_state_defs(
+                $inherit,
+                #(map { ${"${_}::EDGES_CACHE"}{$state} } @defs),
+                @defs,
+                $def
+            );
+            $cache->{"${p}_${state}"}->{"${p}_$_"} = $tc->{$_}
+                for keys %$tc;
+            shift @$inherit if defined $def -> {_INHERIT};
+        }
     }
 }
 
@@ -529,6 +603,10 @@ This exception class inherits from the L<Error|Error> module.
 
 =head2 Inheritance
 
+State machines have two forms of inheritance: ISA and HASA.
+
+=head3 ISA Inheritance
+
 State machines can inherit all, some, or none of the edges in 
 their inheritance tree.  The default is to merge all the edges 
 from all the super-classes.  This behavior may be changed by using 
@@ -564,6 +642,27 @@ This is used to keep any edges from being inherited.
 Note that this setting does not affect the inheritance of class 
 methods.  The code triggered by a transition follows the 
 inheritance rules of Perl.
+
+=head3 HASA Inheritance
+
+A state machine may contain copies of other state machines and put 
+their state names in their own name space.  For example, if a module 
+by the name of C<My::First::Machine> has a state of C<step1> and a 
+second module has the following HASA definition, then C<step1> 
+becomes the new state of C<first_step1> in C<My::Second::Machine>.
+
+ package My::Second::Machine;
+
+ %HASA = (
+    first => 'My::First::Machine',
+ );
+
+The methods called on transition may be overridden in the parent 
+machine by defining them with the prefix: 
+My::Second::Machine::first_state1_to_first_state2 overrides 
+My::First::Machine::state1_to_state2.  This is done outside Perl's 
+inheritance mechanisms, so calling the method on the state machine 
+object will not show the same behavior.
 
 =head1 METHODS
 
@@ -622,14 +721,6 @@ returns the previous state.
 This will try and transition from the current state to the new 
 state C<$state>.  If there are any errors, error states may be 
 processed.  This is used internally by C<process>.
-
-=head1 TODO
-
-=head2 HAS-A Relationships
-
-Need to be able to contain other state machines and prefix their 
-states with a particular constant string.  This avoids state name 
-collisions in the resulting amalgumated state machine.
 
 =head1 SEE ALSO
 

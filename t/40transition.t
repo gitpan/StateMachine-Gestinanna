@@ -58,9 +58,26 @@ sub pre_state11 {
     $main::pre_state11 = 1;
 }
 
+######
+
+package My::Fifth::Machine;
+
+@ISA = qw(StateMachine::Gestinanna);
+
+%HASA = (
+    first => 'My::First::Machine',
+    second => 'My::Second::Machine'
+);
+
+######
+
+package My::Sixth::Machine;
+
+@ISA = qw(My::Fifth::Machine);
+
 package main;
 
-print "1..6\n";
+print "1..12\n";
 
 my $sm2;
 eval {
@@ -119,5 +136,78 @@ if($post_state1) {
 } else {
     print "not ok 6\n";
 }
+
+my $sm3;
+
+eval {
+   $sm3 = My::Fifth::Machine -> new();
+};
+          
+if($@) {
+    print "not ok 7\n";
+    print STDERR "$@\n";
+} else {
+    print "ok 7\n";
+}
+
+$sm3 -> state('first_start');
+
+$pre_state11 = 0;
+$post_state1 = 0;
+$state_to_state1 = 0;
+
+$sm3 -> process({
+    'a.a' => 'a',
+    'a.b' => 'b',
+});   
+
+if($sm3 -> state eq 'first_state1') {
+    print "ok 8\n";
+} else {
+    print "not ok 8\n";
+}
+
+if($state_to_state1) {
+    print "ok 9\n";
+} else {
+    print "not ok 9\n";
+}
+
+my $sm4;
+
+eval {
+   $sm4 = My::Fifth::Machine -> new();
+};
+    
+if($@) {
+    print "not ok 10\n";
+    print STDERR "$@\n";
+} else {
+    print "ok 10\n";
+}
+
+$sm4 -> state('first_start');
+ 
+$pre_state11 = 0;
+$post_state1 = 0;
+$state_to_state1 = 0;
+
+$sm4 -> process({
+    'a.a' => 'a',
+    'a.b' => 'b',
+});
+    
+if($sm4 -> state eq 'first_state1') {
+    print "ok 11\n";
+} else {
+    print "not ok 11\n";
+}
+
+if($state_to_state1) {
+    print "ok 12\n";
+} else {
+    print "not ok 12\n";
+}
+
 
 exit 0;
