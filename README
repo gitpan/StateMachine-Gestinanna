@@ -1,5 +1,5 @@
                   -----------------------------
-                  StateMachine::Gestinanna 0.03
+                  StateMachine::Gestinanna 0.04
                   -----------------------------
 
 StateMachine::Gestinanna is a fairly simple state machine 
@@ -32,4 +32,4 @@ Copyright (C) 2002  Texas A&M University.  All Rights Reserved.
 This program is free software; you can redistribute it and/or modify it
 under the same terms as Perl itself.
 
-$Id: README,v 1.3 2002/08/02 21:27:18 jgsmith Exp $
+$Id: README,v 1.4 2002/08/06 14:02:32 jgsmith Exp $

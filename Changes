@@ -1,6 +1,10 @@
 Changes for StateMachine::Gestinanna
 ------------------------------------
 
+0.04 - Corrected incorrect invocation of transtion handlers
+       Convenience functions (selected_state, invalid, missing, etc.)
+       More documentation
+
 0.03 - More complete support for HAS-A relationships
        More documentation
 

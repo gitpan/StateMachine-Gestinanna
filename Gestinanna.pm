@@ -4,10 +4,10 @@ use Data::FormValidator ();
 #use Data::Dumper;  # here for testing/development - comment out for release
 use YAML ();
 
-$VERSION = '0.03';
+$VERSION = '0.04';
 
 { no warnings;
-$REVISION = sprintf("%d.%d", q$Id: Gestinanna.pm,v 1.10 2002/08/02 21:24:51 jgsmith Exp $ =~ m{(\d+).(\d+)});
+$REVISION = sprintf("%d.%d", q$Id: Gestinanna.pm,v 1.12 2002/08/06 14:01:48 jgsmith Exp $ =~ m{(\d+).(\d+)});
 }
 
 use strict;
@@ -28,20 +28,19 @@ sub _transit {
 
     if($ostate) {
         if($code_run = $self -> can("${ostate}_to_${nstate}")) {
-            $code_run->();
+            $self -> $code_run();
         }
         else {
-            $code_run->() if $code_run = $self -> can("post_${ostate}");
-            $code_run->() if $code_run = $self -> can($pre_func);
+            $self -> $code_run() if $code_run = $self -> can("post_${ostate}");
+            $self -> $code_run() if $code_run = $self -> can($pre_func);
         }
     }
     else {
-        $code_run->() if $code_run = $self->can($pre_func);
+        $self -> $code_run() if $code_run = $self->can($pre_func);
     }
 
     $code_run = $self -> _transit_hasa($ostate, $nstate) unless($code_run);
 
-    #$self -> state($nstate);
     return $code_run;
 }
 
@@ -259,19 +258,26 @@ sub select_state {
 
     my $args = _flatten_hash($self->data('in'));
 
-    my $na = scalar(keys %$args);
-    my $bestscore = $na * $na * $na;
-    my $best = { score => -1, state => $self->state, missing => $na };
+    my $na = scalar(keys %$args)+1;
+    my $best = { score => -1, state => $self->state, missing => [ keys %$args ], };
 
-    return $best unless $na;
+    $self -> {context} -> {best} = {
+        missing => $best -> {missing},
+    };
+
+    return $best unless $na > 1;
     
     my $class = ref $self || $self;
-    my $cache = \%{"${class}::EDGES_CACHE"};
-    my @states = keys %{$cache->{$self->state}};
     my $validator = ${"${class}::VALIDATORS"}{$self -> state};
 
     return $best unless $validator;
+
+    my $cache = \%{"${class}::EDGES_CACHE"};
+    my @states = keys %{$cache->{$self->state}};
     return $best unless @states;
+
+    my $na2 = $na*$na;
+    my $bestscore = $na * $na2;
 
     foreach my $v (@states) {
         my($valid, $missing, $invalid, $unknown) =
@@ -284,12 +290,12 @@ sub select_state {
             scalar(@$unknown),
         );
 
-        my $score = $nv * $na * $na;
-        $score /= $nm if $nm;
-        $score /= $ni if $ni;
-        $score /= $nu if $nu;
+        my $score = ($nv+1) * $na2;
+        $score /= ($nm+1);
+        $score /= ($ni+1);
+        $score /= ($nu+1);
 
-        if(($score > $best->{score} && ($nm <= @{$best -> {missing}||[]}))) {
+        if(($score >= $best->{score} && ($nm <= @{$best -> {missing}||[]}))) {
             if($ni) {
                 $best -> {invalid} = $invalid;
             }
@@ -308,8 +314,40 @@ sub select_state {
         }
     }
 
+    $self -> {context} -> {best} = {
+        missing => $best -> {missing},
+        invalid => $best -> {invalid},
+        unknown => $best -> {unknown},
+        state   => $best -> {state},
+    };
+
     return $best;
 }
+
+sub selected_state {
+    my $self = shift;
+
+    return $self -> {context} -> {best} -> {state};
+}
+
+sub missing {
+    my $self = shift;
+
+    return $self -> {best} -> {missing} || [];
+}
+
+sub invalid {
+    my $self = shift;
+
+    return $self -> {best} -> {invalid} || [];
+}
+
+sub unknown {
+    my $self = shift;
+
+    return $self -> {best} -> {unknown} || [];
+}
+
 
 sub generate_validators {
     my($class) = shift;
@@ -740,6 +778,16 @@ This is any data specified in the error state transition object
 
 =back 4
 
+=head2 invalid ( )
+
+Returns a reference to a list of keys in the input data that are 
+considered invalid by the validator for the new state.
+
+=head2 missing ( )
+
+Returns a reference to a list of keys that are missing in the 
+input data as determined by the validator for the new state.
+
 =head2 new (%config)
 
 Constructs a new state machine instance.  Any class initialization 
@@ -775,6 +823,12 @@ new state.  This is usually the method you need.
 Given the data and current state in the context, selects the new 
 state.  This is used internally by C<process>.
 
+=head2 selected_state ( )
+
+Returns the state most recently selected by the C<select_state> 
+method.  If no state was selected, it will return C<undef> or the 
+current state, depending on what C<select_state> decides.
+
 =head2 state ($state)
 
 If called without an argument, returns the current state.  If 
@@ -786,6 +840,11 @@ returns the previous state.
 This will try and transition from the current state to the new 
 state C<$state>.  If there are any errors, error states may be 
 processed.  This is used internally by C<process>.
+
+=head2 unknown ( )
+
+Returns a reference to a list of keys in the input data that are unknown to the 
+validator for the new state.
 
 =head1 SEE ALSO
 
