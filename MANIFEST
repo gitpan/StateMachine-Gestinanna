@@ -2,6 +2,7 @@ Changes
 Gestinanna.pm
 MANIFEST
 MANIFEST.SKIP
+MailForm.pm
 Makefile.PL
 README
 t/00basic.t
@@ -10,3 +11,5 @@ t/20inherit.t
 t/30context.t
 t/40transition.t
 t/50exception.t
+t/60overrides.t
+t/900mailform.t

@@ -44,46 +44,67 @@ package My::Third::Machine;
 
 package main;
 
-print "1..3\n";
+my($sm, $sm2, $context, $message);
 
-my $sm;
+@TESTS = (
+    sub {},
 
-eval {
-$sm = My::Third::Machine -> new();
-};
+    sub {
+        eval {
+            $sm = My::Third::Machine -> new();
+        };
 
-if($@) {
-    print "not ok 1\n";
-} else {
-    print "ok 1\n";
-}
+        $message = $@;
+        return !$@;
+    },
 
-$sm -> state('start');
+    sub {
+        $sm -> state('start');
 
-$sm -> process({
-    'a.a' => 'a',
-    'a.b' => 'b',
-});
+        $sm -> process({
+            'a.a' => 'a',
+            'a.b' => 'b',
+        });
 
-if($sm -> state eq 'state2') {
-    print "ok 2\n";
-} else {
-    print "not ok 2\n";
-    print STDERR "state: ", $sm -> state, "\n";
-}
+        return $sm -> state eq 'state2';
+    },
 
-my $context = $sm -> context;
+    sub {
+        $context = $sm -> context;
 
-my $sm2 = My::Third::Machine -> new(
-    context => $context
+        $sm2 = My::Third::Machine -> new(
+            context => $context
+        );
+
+        return $sm2 -> state eq 'state2';
+    },
 );
 
-if($sm2 -> state eq 'state2') {
-    print "ok 3\n";
-} else {
-    print "not ok 3\n";
-    print STDERR "state: ", $sm2 -> state, "\n";
-}
+print "1..", $#TESTS, "\n";
 
+my $r;
+    
+for my $i (1..$#TESTS) {
+    $r = undef;
+          
+    eval { $r = $TESTS[$i] -> (); };
+    if($r) {
+        print "ok $i\n";
+    }
+    else {
+        if($ENV{DEBUG}) {
+            $message = undef;
+            warn "\n--- DEBUG for test $i\n";
+            local($StateMachine::Gestinanna::DEBUG) = 1;
+            local($StateMachine::Gestinanna::CC::DEBUG) = 1;
+            eval {
+                $TESTS[$i] -> ();
+            };
+            print STDERR "$message\n" if defined $message;
+            warn "--- END DEBUG for test $i\n";
+        }
+        print "not ok $i\n";
+    }
+}
 
 exit 0;

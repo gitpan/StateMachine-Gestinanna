@@ -1,5 +1,5 @@
                   -----------------------------
-                  StateMachine::Gestinanna 0.05
+                  StateMachine::Gestinanna 0.06
                   -----------------------------
 
 StateMachine::Gestinanna is a fairly simple state machine 
@@ -35,10 +35,18 @@ The author lurks on the mod_perl list as well as various IRC channels.
 The list for the Gestinanna project is also appropriate.  Feel free to 
 send questions there.  
 
+If any tests fail, you may rerun `make test' with the DEBUG environment 
+variable set to a true value.  This will output quite a few debug 
+messages for any failed tests.
+
+See StateMachine::Gestinanna::Examples::MailForm for an example state 
+machine.  See the t/900mailform.t test script for an example of how to 
+drive it.
+
 
 Copyright (C) 2002  Texas A&M University.  All Rights Reserved.
 
 This program is free software; you can redistribute it and/or modify it
 under the same terms as Perl itself.
 
-$Id: README,v 1.6 2002/08/15 21:37:51 jgsmith Exp $
+$Id: README,v 1.7 2002/10/25 06:05:45 jgsmith Exp $

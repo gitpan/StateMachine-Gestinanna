@@ -25,29 +25,58 @@ package My::Machine;
 
 package main;
 
-print "1..2\n";
 
-my $sm = My::Machine -> new();
+my($sm, $message);
 
+@TESTS = (
+    sub {},
 
-if($@) {
-    print "not ok 1\n";
-} else {
-    print "ok 1\n";
-}
+    sub {
+        eval {
+            $sm = My::Machine -> new();
+        };
 
-$sm -> state('start');
+        $message = $@;
+        return !$@;
+    },
 
-$sm -> process({
-    'a.a' => 'a',
-    'a.b' => 'b',
-});
+    sub {
+        $sm -> state('start');
 
-if($sm -> state eq 'state1') {
-    print "ok\n";
-} else {
-    print "not ok\n";
-    print STDERR "state: ", $sm -> state, "\n";
+        $sm -> process({
+            'a.a' => 'a',
+            'a.b' => 'b',
+        });
+
+        return $sm -> state eq 'state1';
+    },
+);
+
+print "1..", $#TESTS, "\n";
+     
+my $r;
+
+for my $i (1..$#TESTS) {
+    $r = undef;
+
+    eval { $r = $TESTS[$i] -> (); };
+    if($r) {
+        print "ok $i\n";
+    }
+    else {
+        if($ENV{DEBUG}) {
+            $message = undef;
+            warn "\n--- DEBUG for test $i\n";
+            local($StateMachine::Gestinanna::DEBUG) = 1;
+            local($StateMachine::Gestinanna::CC::DEBUG) = 1;
+            eval {
+                $TESTS[$i] -> ();
+            };
+            print STDERR "$message\n" if defined $message;
+            warn "--- END DEBUG for test $i\n";
+        }
+        print "not ok $i\n";
+    }
 }
 
 exit 0;

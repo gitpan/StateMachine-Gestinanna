@@ -1,6 +1,10 @@
 Changes for StateMachine::Gestinanna
 ------------------------------------
 
+0.06 - Added can(,) method
+       Added overrides key for edge transition definitions
+       Added Mail Form example
+
 0.05 - Added Class::Container to make creation of new state machine 
          types (vs. applications) easier
 

@@ -25,6 +25,7 @@ package My::First::Machine;
 
 sub start_to_state1 {
     $main::state_to_state1 = 1;
+    return;
 }
 
 package My::Second::Machine;
@@ -52,10 +53,12 @@ package My::Fourth::Machine;
 
 sub post_state1 {
     $main::post_state1 = 1;
+    return;
 }
 
 sub pre_state11 {
     $main::pre_state11 = 1;
+    return;
 }
 
 ######
@@ -75,139 +78,212 @@ package My::Sixth::Machine;
 
 @ISA = qw(My::Fifth::Machine);
 
+######
+## TESTS appear below
+######
+
 package main;
 
-print "1..12\n";
 
-my $sm2;
-eval {
-$sm2 = My::Fourth::Machine -> new();
-};
+my($sm2, $sm3, $sm4, $message);
 
-if($@) {
-    print "not ok 1\n";
-    print STDERR "$@\n";
-} else {
-    print "ok 1\n";
-}
+@TESTS = (
+    sub { },  # does nothing except let us start at 1
 
-$state_to_state1 = 0;
+    sub {  # 1
+        $sm2;
+        eval {
+            $sm2 = My::Fourth::Machine -> new();
+        };
 
-$sm2 -> state('start');
+        $message = $@;
+        return !$@;
+    },
 
-$sm2 -> process({
-    'a.a' => 'a',
-    'a.b' => 'b',
-});
+    sub {  # 2
+        $state_to_state1 = 0;
 
-if($sm2 -> state eq 'state1') {
-    print "ok 2\n";
-} else {
-    print "not ok 2\n";
-}
+        $sm2 -> state('start');
 
-if($state_to_state1) {
-    print "ok 3\n";
-} else {
-    print "not ok 3\n";
-}
+        $sm2 -> process({
+            'a.a' => 'a',
+            'a.b' => 'b',
+        });
 
-$pre_state11 = 0;
-$post_state1 = 0;
+        return $sm2 -> state eq 'state1';
+    },
 
-$sm2 -> process({
-    'a.d' => 'a'
-});
-
-if($sm2 -> state eq 'state11') {
-    print "ok 4\n";
-} else {
-    print "not ok 4\n";
-}
-
-if($pre_state11) {
-    print "ok 5\n";
-} else {
-    print "not ok 5\n";
-}
-
-if($post_state1) {
-    print "ok 6\n";
-} else {
-    print "not ok 6\n";
-}
-
-my $sm3;
-
-eval {
-   $sm3 = My::Fifth::Machine -> new();
-};
+    sub {  # 3
+        $state_to_state1 = 0;
           
-if($@) {
-    print "not ok 7\n";
-    print STDERR "$@\n";
-} else {
-    print "ok 7\n";
-}
+        $sm2 -> state('start');
+        
+        $sm2 -> process({
+            'a.a' => 'a',
+            'a.b' => 'b',
+        });
 
-$sm3 -> state('first_start');
+        return $state_to_state1;
+    },
 
-$pre_state11 = 0;
-$post_state1 = 0;
-$state_to_state1 = 0;
+    sub {  # 4
+        $pre_state11 = 0;
+        $post_state1 = 0;
 
-$sm3 -> process({
-    'a.a' => 'a',
-    'a.b' => 'b',
-});   
+        $sm2 -> state('start');
 
-if($sm3 -> state eq 'first_state1') {
-    print "ok 8\n";
-} else {
-    print "not ok 8\n";
-}
+        $sm2 -> process({
+            'a.a' => 'a',
+            'a.b' => 'b',
+        });
 
-if($state_to_state1) {
-    print "ok 9\n";
-} else {
-    print "not ok 9\n";
-}
+        $sm2 -> process({
+            'a.d' => 'a'
+        });
 
-my $sm4;
+        return $sm2 -> state eq 'state11';
+    },
 
-eval {
-   $sm4 = My::Sixth::Machine -> new();
-};
+    sub {  # 5
+        $pre_state11 = 0;
+        $post_state1 = 0;
+
+        $sm2 -> state('start');
+
+        $sm2 -> process({
+            'a.a' => 'a',
+            'a.b' => 'b',
+        });
+
+        $sm2 -> process({
+            'a.d' => 'a'
+        });
+
+        return $pre_state11;
+    },
+
+    sub {  # 6
+        $pre_state11 = 0;
+        $post_state1 = 0;
+
+        $sm2 -> state('start');
+
+        $sm2 -> process({
+            'a.a' => 'a',
+            'a.b' => 'b',
+        });
+
+        $sm2 -> process({
+            'a.d' => 'a'
+        });
+
+        return $post_state1;
+    },
+
+    sub {  # 7
+        eval {
+           $sm3 = My::Fifth::Machine -> new();
+        };
+          
+        $message = $@;
+        return !$@;
+    },
+
+    sub {  # 8
+        $sm3 -> state('first_start');
+
+        $pre_state11 = 0;
+        $post_state1 = 0;
+        $state_to_state1 = 0;
+
+        $sm3 -> process({
+            'a.a' => 'a',
+            'a.b' => 'b',
+        });   
+
+        return $sm3 -> state eq 'first_state1';
+    },
+
+    sub {  # 9
+        $sm3 -> state('first_start');
+
+        $pre_state11 = 0;
+        $post_state1 = 0;
+        $state_to_state1 = 0;
+            
+        $sm3 -> process({
+            'a.a' => 'a',
+            'a.b' => 'b',
+        });
+
+        return $state_to_state1;
+    },
+
+    sub {  # 10
+        eval {
+           $sm4 = My::Sixth::Machine -> new();
+        };
+
+        $message = $@;
+        return !$@;
+    },
     
-if($@) {
-    print "not ok 10\n";
-    print STDERR "$@\n";
-} else {
-    print "ok 10\n";
-}
-
-$sm4 -> state('first_start');
+    sub {  # 11
+        $sm4 -> state('first_start');
  
-$pre_state11 = 0;
-$post_state1 = 0;
-$state_to_state1 = 0;
+        $pre_state11 = 0;
+        $post_state1 = 0;
+        $state_to_state1 = 0;
 
-$sm4 -> process({
-    'a.a' => 'a',
-    'a.b' => 'b',
-});
+        $sm4 -> process({
+            'a.a' => 'a',
+            'a.b' => 'b',
+        });
     
-if($sm4 -> state eq 'first_state1') {
-    print "ok 11\n";
-} else {
-    print "not ok 11\n";
-}
+        return $sm4 -> state eq 'first_state1';
+    },
 
-if($state_to_state1) {
-    print "ok 12\n";
-} else {
-    print "not ok 12\n";
-}
+    sub {  # 12
+        $sm4 -> state('first_start');
+  
+        $pre_state11 = 0;
+        $post_state1 = 0;
+        $state_to_state1 = 0;
 
+        $sm4 -> process({
+            'a.a' => 'a',
+            'a.b' => 'b',
+        });
+
+        return $state_to_state1;
+    },
+);
+
+print "1..", $#TESTS, "\n";
+
+my $r;
+
+for my $i (1..$#TESTS) {
+    $r = undef;
+
+    eval { $r = $TESTS[$i] -> (); };
+    if($r) {
+        print "ok $i\n";
+    }
+    else {
+        if($ENV{DEBUG}) {
+            $message = undef;
+            warn "\n--- DEBUG for test $i\n";
+            local($StateMachine::Gestinanna::DEBUG) = 1;
+            local($StateMachine::Gestinanna::CC::DEBUG) = 1;
+            eval {
+                $TESTS[$i] -> ();
+            };
+            print STDERR "$message\n" if defined $message;
+            warn "--- END DEBUG for test $i\n";
+        }
+        print "not ok $i\n";
+    }
+}
 
 exit 0;

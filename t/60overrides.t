@@ -1,7 +1,5 @@
 use StateMachine::Gestinanna;
 
-######
-
 package My::First::Machine;
 
 @ISA=qw(StateMachine::Gestinanna);
@@ -25,8 +23,6 @@ package My::First::Machine;
     },
 );
 
-######
-
 package My::Second::Machine;
 
 @ISA=qw(StateMachine::Gestinanna);
@@ -42,41 +38,31 @@ package My::Second::Machine;
     }
 );
 
-######
-
 package My::Third::Machine;
 
 @ISA=qw(My::First::Machine My::Second::Machine);
 
-######
-
-package My::Fourth::Machine;
-
-@ISA=qw(My::First::Machine My::Second::Machine);
-
 %EDGES = (
-    _INHERIT => 'SUPER',
+    start => {
+        state1 => {
+            overrides => {
+                'b.a' => 'c',
+            },
+        },
+    },
 );
 
-######
-
-package My::Fifth::Machine;
-
-@ISA = qw(StateMachine::Gestinanna);
-
-%HASA = (
-    first => 'My::First::Machine',
-    second => 'My::Second::Machine'
-);
-
-######
+sub start_to_state1 {
+    $main::start_me_60 = 1;
+    return;
+};
 
 package main;
 
-my($sm, $sm2, $sm3, $message);
+my($sm, $message);
 
 @TESTS = (
-    sub { },
+    sub {},
 
     sub {
         eval {
@@ -88,52 +74,22 @@ my($sm, $sm2, $sm3, $message);
     },
 
     sub {
+        eval {
+            $sm = My::Third::Machine -> new();
+        };
+
+        return 0 if $@;
+
         $sm -> state('start');
+
+        $start_state1 = 0;
 
         $sm -> process({
             'a.a' => 'a',
-            'a.b' => 'b',
+            #'b.a' => 'c',
         });
 
-        return $sm -> state eq 'state2';
-    },
-
-    sub {
-        eval {
-            $sm2 = My::Fourth::Machine -> new();
-        };
-        $message = $@;
-        return !$@;
-    },
-
-    sub {
-        $sm2 -> state('start');
-
-        $sm2 -> process({
-            'a.a' => 'a',
-            'a.b' => 'b',
-        });
-
-        return $sm2 -> state eq 'state1';
-    },
-
-    sub {
-        eval {
-           $sm3 = My::Fifth::Machine -> new();
-        };
-        $message = $@;
-        return !$@;
-    },
-
-    sub {
-        $sm3 -> state('first_start');
-
-        $sm3 -> process({
-            'a.a' => 'a',
-            'a.b' => 'b',
-        });
-
-        return $sm3 -> state eq 'first_state1';
+        return $start_me_60;
     },
 );
 
@@ -143,7 +99,7 @@ my $r;
 
 for my $i (1..$#TESTS) {
     $r = undef;
-
+            
     eval { $r = $TESTS[$i] -> (); };
     if($r) {
         print "ok $i\n";

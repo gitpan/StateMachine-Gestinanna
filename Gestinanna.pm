@@ -1,34 +1,166 @@
 # the ::CC package avoids a couple of greps and ->can() on @ISA
 package StateMachine::Gestinanna::CC;
 
+use strict;
+no strict 'refs';
+use vars qw(@ISA $DEBUG);
+
 @ISA = qw(Class::Container);
 
 sub _generate_states { }
 
 sub _transit_hasa { }
 
-package StateMachine::Gestinanna;
 
+$DEBUG = 0;
+
+sub _DEBUG {
+    return unless $DEBUG;
+    warn @_;
+}
+
+sub can {
+    my($self) = shift;
+
+    return $self -> SUPER::can(@_) if @_ != 2;
+}
+
+package StateMachine::Gestinanna;
+    
 use Data::FormValidator ();
-#use Data::Dumper;  # here for testing/development - comment out for release
+use Data::Dumper;  # here for testing/development - comment out for release
 use YAML ();
 use Class::Container;
 use Params::Validate qw(:types);
 
-@ISA = qw(StateMachine::Gestinanna::CC);
-
-__PACKAGE__ -> valid_params(
-    context => { type => SCALAR, default => YAML::Dump({}), optional => 1 },
-);
-
-$VERSION = '0.05';
-
-{ no warnings;
-$REVISION = sprintf("%d.%d", q$Id: Gestinanna.pm,v 1.15 2002/08/15 21:38:41 jgsmith Exp $ =~ m{(\d+).(\d+)});
-}
-
 use strict;
 no strict 'refs';
+use vars qw(@ISA $VERSION $REVISION $DEBUG);
+    
+@ISA = qw(StateMachine::Gestinanna::CC);
+    
+__PACKAGE__ -> valid_params(
+    context => { type => SCALAR, default => YAML::Dump({}), optional => 1 },
+);  
+    
+$VERSION = '0.06';
+        
+{ no warnings;
+$REVISION = sprintf("%d.%d", q$Id: Gestinanna.pm,v 1.17 2002/10/25 06:05:45 jgsmith Exp $ =~ m{(\d+).(\d+)});
+}
+    
+$DEBUG = 0;
+        
+sub _DEBUG {
+    return unless $DEBUG;
+    warn @_;
+}
+        
+sub can {
+    my($self) = shift;
+
+    return $self -> SUPER::can(@_) if @_ != 2;
+
+    # we want to find the code that should be run from state1 to state2
+    my($ostate, $nstate) = @_;
+    # we cache this in ${class}::CAN;
+    my $class = ref $self || $self;
+
+    _DEBUG("Looking for ${ostate}:${nstate} in $class\n");
+    my $code = ${"${class}::CAN"}{"${ostate}:${nstate}"};
+    _DEBUG("Found code ($code) for ${ostate}:${nstate} in cache\n") if $code;
+    return $code if $code && !$DEBUG;
+
+    if($ostate) {
+        if($code = $self -> can("${ostate}_to_${nstate}")) {
+             _DEBUG("${ostate}_to_${nstate} is found in $class\n");
+             ${"${class}::CAN"}{"${ostate}:${nstate}"} = $code;
+             return $code;
+        }
+        else {
+            _DEBUG("$ostate -> $nstate\n");
+            my($prcode, $pocode) = ($self -> can("pre_${nstate}"), $self -> can("post_${ostate}"));
+            $prcode = $self -> _can_hasa(undef, $nstate) unless $prcode;
+            _DEBUG("$ostate -> $nstate\n");
+            $pocode = $self -> _can_hasa($ostate, undef) unless $pocode;
+            _DEBUG("$ostate -> $nstate\n");
+            return $self -> _can_hasa($ostate, $nstate) unless $prcode || $pocode;
+            _DEBUG("Found pre_${nstate} ($prcode) and post_${ostate} ($pocode) for $class\n");
+            $code = _make_can_code($prcode, $pocode);
+            ${"${class}::CAN"}{"${ostate}:${nstate}"} = $code;
+            return $code;
+        }
+    }
+    else {
+        if($code = $self->can("pre_${nstate}")) {
+            _DEBUG("Found pre_${nstate} for $class\n");
+            ${"${class}::CAN"}{"${ostate}:${nstate}"} = $code;
+            return $code;
+        }
+    }
+            
+    $code = $self -> _can_hasa($ostate, $nstate);
+    ${"${class}::CAN"}{"${ostate}:${nstate}"} = $code;
+    return $code;
+}
+
+sub _make_can_code {
+    my($prcode, $pocode) = @_;
+
+    _DEBUG("_make_can_code($prcode, $pocode)\n");
+
+    return sub { $pocode->(@_) if $pocode; $prcode->(@_) if $prcode; };
+}
+
+sub _can_hasa {
+    my($self, $ostate, $nstate) = @_;
+
+    my $class = ref $self || $self;
+    _DEBUG("_can_hasa($class, $ostate, $nstate)\n");
+    my $code = 0;
+
+    # looks like HASAs are expensive
+    foreach my $p (@{"${class}::HASA_KEYS_SORTED"}) {
+        _DEBUG("Looking at $class\n");
+        next unless $nstate =~ m{^${p}_};
+    
+        bless $self => ${"${class}::HASA"}{$p};
+   
+        my($realoldstate, $realnewstate) = ($ostate, $nstate);
+        $nstate =~ s{^${p}_}{};
+        $ostate =~ s{^${p}_}{};
+    
+        $code = $self -> can($ostate, $nstate);
+        bless $self => $class;
+        return _make_hasa_can_code(${"${class}::HASA"}{$p}, $class, $p, $code) if $code;
+    }
+
+    foreach my $c (@{"${class}::ISA"}) {
+        bless $self => $c;
+        $code = $self -> can($ostate, $nstate);
+        bless $self => $class;
+        return $code if $code;
+    }
+}
+
+sub _make_hasa_can_code {
+    my($newclass,$oldclass,$p,$code) = @_;
+
+    return sub {
+        my $self = shift;
+        bless $self => $newclass;
+        eval { $code -> ($self, @_); };
+        bless $self => $oldclass;
+        if($@) {
+            die $@ unless ref $@;
+            die $@ unless $@ -> isa('StateMachine::Gestinanna::Exception');
+            throw StateMachine::Gestinanna::Exception (
+                -state => $p . "_" . $@->state,
+                -data => $@ -> data
+            );
+        }
+    };
+}
 
 # _transit() will try to go the new new $nstate but will throw an exception if unable to do so.
 # $nstate - state we are going to
@@ -41,84 +173,19 @@ sub _transit {
     my($self, $ostate, $nstate) = @_;
 
     my $code_run = 0;
-    my $pre_func = "pre_${nstate}";
+    my $ret;
 
     if($ostate) {
-        if($code_run = $self -> can("${ostate}_to_${nstate}")) {
-            $self -> $code_run();
-        }
-        else {
-            $self -> $code_run() if $code_run = $self -> can("post_${ostate}");
-            $self -> $code_run() if $code_run = $self -> can($pre_func);
-        }
+        $ret = $self -> $code_run() if $code_run = $self -> can($ostate, $nstate);
+        _DEBUG("Ran $code_run for can($ostate, $nstate)\n");
     }
     else {
-        $self -> $code_run() if $code_run = $self->can($pre_func);
+        $ret = $self -> $code_run() if $self -> can("pre_${nstate}");
     }
 
-    $code_run = $self -> _transit_hasa($ostate, $nstate) unless($code_run);
-
-    return $code_run;
+    return $ret;
 }
 
-sub _transit_hasa {
-    my($self, $ostate, $nstate) = @_;
-
-    my $orig_class = ref $self || $self;
-    my $code_run = 0;
-
-    # looks like HASAs are expensive
-    foreach my $p (@{"${orig_class}::HASA_KEYS_SORTED"}) {
-        next unless $nstate =~ m{^${p}_};
-
-        bless $self => ${"${orig_class}::HASA"}{$p};
-
-        my($realoldstate, $realnewstate) = ($ostate, $nstate);
-        $nstate =~ s{^${p}_}{};
-        $ostate =~ s{^${p}_}{};
-
-        eval {
-            $code_run = $self -> _transit($ostate, $nstate);
-            bless $self => $orig_class;
-            return 1 if $code_run;
-        };
-
-        if($@) {
-            bless $self => $orig_class;
-            die $@ unless ref $@;
-            die $@ unless $@ -> isa('StateMachine::Gestinanna::Exception');
-            # should never get to the rest of this
-            throw StateMachine::Gestinanna::Exception (
-                -state => $p . "_" . $@->state,
-                -data => $@ -> data
-            );
-        }
-
-        $nstate = $realnewstate;
-        $ostate = $realoldstate;
-        bless $self => $orig_class;
-        last;
-    }
-
-    unless($code_run) {
-        foreach my $c (@{"${orig_class}::ISA"}) {
-            bless $self => $c;
-            eval {
-                $code_run = $self -> _transit_hasa($ostate, $nstate);
-                bless $self => $orig_class;
-                return 1 if $code_run;
-            };
-            if($@) {
-                bless $self => $orig_class;
-                die $@;
-            };
-            last if $code_run;
-        }
-        bless $self => $orig_class;
-    }
-
-    return $code_run;
-}
 
 # transit() will try to go to the new $nstate, and will process any ErrorState transitions requested
 # $nstate - state we are transitioning to
@@ -127,16 +194,35 @@ sub _transit_hasa {
 sub transit {
     my($self, $nstate) = @_;
 
+    _DEBUG("transit($self, $nstate)\n");
+    my $ostate = $self -> state;
+    _DEBUG("Transit: $ostate -> $nstate\n");
+    return if $ostate eq $nstate;
+    my $ret;
     while(defined $nstate) {
+        $ret = undef;
         eval { 
-            $self -> _transit($self -> state, $nstate);
-            $self -> state($nstate);
+            _DEBUG("Transit: $ostate -> $nstate\n");
+            $ret = $self -> _transit($ostate, $nstate);
+            _DEBUG("Transition returns [$ret]\n");
+            $self -> state($nstate) unless $ret;
         };
-        last unless $@;
-        die $@ unless ref $@;
-        die $@ unless $@->isa('StateMachine::Gestinanna::Exception');
-        $nstate = $@ -> state;
-        $self -> {context} -> {data} -> {error} = $@ -> data;
+        if($@) {
+            last unless $@;
+            die $@ unless ref $@;
+            die $@ unless $@->isa('StateMachine::Gestinanna::Exception');
+            $ostate = $self -> state;
+            $nstate = $@ -> state;
+            $self -> {context} -> {data} -> {error} = $@ -> data;
+        }
+        elsif($ret) {
+            _DEBUG("Using \$ret to define next state\n");
+            $ostate = $self -> state;
+            $nstate = $ret;
+        }
+        else {
+            $nstate = undef;
+        }
     }
 }
 
@@ -238,6 +324,7 @@ sub process {
 
     $self -> clear_data('in');
 
+    _DEBUG("$self -> process($args)\n$args: ", Data::Dumper -> Dump([$args]), "\n");
     $self -> add_data('in', $args);
 
     my $best = $self -> select_state;
@@ -289,16 +376,23 @@ sub select_state {
 
     return $best unless $validator;
 
-    my $cache = \%{"${class}::EDGES_CACHE"};
-    my @states = keys %{$cache->{$self->state}};
+    my $cache = ${"${class}::EDGES_CACHE"}{$self -> state};
+    _DEBUG("cache for $class - ", $self -> state, ": ", Data::Dumper -> Dump([$cache]), "\n");
+    my @states = keys %{$cache -> {profile}};
     return $best unless @states;
 
     my $na2 = $na*$na;
     my $bestscore = $na * $na2;
 
     foreach my $v (@states) {
-        my($valid, $missing, $invalid, $unknown) =
-            $validator->validate($args, $v);
+        _DEBUG("$validator -> validate(..., $v); ... => \n", Data::Dumper->Dump([{ %$args, %{ $cache->{overrides}->{$v} || {}}}]), "\n");
+        my($valid, $missing, $invalid, $unknown);
+        eval {
+        ($valid, $missing, $invalid, $unknown) = 
+            $validator->validate({ %$args, %{ $cache->{overrides}->{$v} || {}}}, $v); };
+        warn "$@\n" if $@;
+
+        _DEBUG("Validator: ", Data::Dumper -> Dump([$validator]), "\n");
                 
         my($nv, $nm, $ni, $nu) = ( 
             scalar(keys %$valid),
@@ -370,6 +464,7 @@ sub generate_validators {
     my($class) = shift;
 
     $class = ref $class || $class;
+    _DEBUG("Generating validators for $class\n");
 
     $class -> _generate_states;
 
@@ -378,8 +473,14 @@ sub generate_validators {
     @{"${class}::HASA_KEYS_SORTED"} = sort { length $b <=> length $a } keys %{"${class}::HASA"};
     my $vs = \%{"${class}::VALIDATORS"};
 
-    while(my($state, $reqs) = each %$states) {
-        $vs->{$state} = Data::FormValidator->new($reqs);
+    foreach my $state (keys %$states) {
+    #while(my($state, $reqs) = each %$states) {
+        _DEBUG("Creating validator for [$state]\n");
+        delete $states -> {$state} ->{profile} -> {$_} -> {overrides} foreach keys %{$states -> {$state} ->{profile}||{}};
+
+        $vs->{$state} = Data::FormValidator->new($states -> {$state} ->{profile});
+        _DEBUG "Validator: ", Data::Dumper -> Dump([$vs->{$state}]), "\n";
+        _DEBUG "Input data: ", Data::Dumper -> Dump([$states -> {$state} ->{profile}]), "\n";
     }
 }
 
@@ -389,19 +490,18 @@ sub _generate_states {
 
     $class = ref $class || $class;
 
-    return if defined %{"${class}::EDGES_CACHE"};
+    return if !$DEBUG && defined %{"${class}::EDGES_CACHE"};
 
     # need to collect state transitions and feed them into Data::FormValidator
     # able to inherit: SUPER, ALL, NONE (ALL is default for now)
     # need this at the state->state level
     $_ -> _generate_states foreach @{"${class}::ISA"};
-    ${"${class}::HASA"}{$_} -> _generate_states(${"${class}::HASA"}{$_}) foreach keys %{"${class}::HASA"};
+    ${"${class}::HASA"}{$_} -> _generate_states(${"${class}::HASA"}{$_}) 
+        foreach keys %{"${class}::HASA"};
 
     %{"${class}::EDGES_CACHE"} = ( );
 
-    unless(keys %{"${class}::EDGES"}) {
-        %{"${class}::EDGES"} = ( );
-    }
+    %{"${class}::EDGES"} = ( ) unless keys %{"${class}::EDGES"};
 
     my $cache = \%{"${class}::EDGES_CACHE"};
     my $states = \%{"${class}::EDGES"};
@@ -409,17 +509,24 @@ sub _generate_states {
     my @states;
 
     {
-        my %hash = map { $_ => 1 } (map { keys %{"${_}::EDGES_CACHE"} } @{"${class}::ISA"});
+        my %hash = map { $_ => 1 } 
+                       (map { keys %{"${_}::EDGES_CACHE"} } 
+                            @{"${class}::ISA"}
+                       )
+                   ;
 
-
-        @hash{grep { $_ ne '_INHERIT' } keys %$states} = ( );
+        @hash{
+            grep { $_ ne '_INHERIT' } 
+                 keys %$states
+        } = ( );
 
         @states = keys %hash;
     }
 
     foreach my $state (@states) {
         next if $state eq '_INHERIT';
-        my $def = $states->{$state};
+        _DEBUG("Working on generating states for ${class}::${state}\n");
+        my $def = $states -> {$state};
         my %cdef = ( );
         my @defs = ( );
         unshift @$inherit, ($def -> {_INHERIT}) if defined $def -> {_INHERIT};
@@ -430,11 +537,19 @@ sub _generate_states {
             /^ALL$/ && last;
             /^NONE$/ && do { @defs = ( ); last; };
         }
-        $cache->{$state} = _merge_state_defs(
+        $cache->{$state}->{profile} = _merge_state_defs(
             $inherit,
-            (map { ${"${_}::EDGES_CACHE"}{$state} } @defs), 
+            (map { ${"${_}::EDGES_CACHE"}{$state}{profile} } @defs), 
             $def
         );
+        $cache->{$state}->{overrides} = _merge_state_defs(
+            $inherit,
+            (map { ${"${_}::EDGES_CACHE"}{$state}{overrides} } @defs),
+            {
+                map { $_ => $def -> {$_} -> {overrides} } keys %$def
+            },
+        );
+        delete $cache->{$state}->{profile} -> {overrides};
         shift @$inherit if defined $def -> {_INHERIT};
     }
 
@@ -449,8 +564,7 @@ sub _generate_states {
             unshift @$inherit, ($def -> {_INHERIT}) if defined $def -> {_INHERIT};
 
             @defs = ( 
-                      ${"${h}::EDGES_CACHE"}{$state},
-                      #grep { exists ${"${_}::EDGES_CACHE"}{"${p}_${state}"} } @{"${class}::ISA"}
+                      ${"${h}::EDGES_CACHE"}{$state}{profile},
                     );
             for($inherit->[0]) {
                 /^SUPER$/ && do { @defs = ($defs[0]); last; };
@@ -463,7 +577,18 @@ sub _generate_states {
                 @defs,
                 $def
             );
-            $cache->{"${p}_${state}"}->{"${p}_$_"} = $tc->{$_}
+            delete $tc -> {overrides};
+            $cache->{"${p}_${state}"}->{profile}->{"${p}_$_"} = $tc->{$_}
+                for keys %$tc;
+            @defs = (
+                      ${"${h}::EDGES_CACHE"}{$state}{overrides},
+                    );
+            $tc = _merge_state_defs(
+                $inherit,
+                @defs,
+                $def->{overrides}
+            );
+            $cache->{"${p}_${state}"}->{overrides}->{"${p}_$_"} = $tc->{$_}
                 for keys %$tc;
             shift @$inherit if defined $def -> {_INHERIT};
         }
@@ -513,6 +638,12 @@ sub _deep_merge_hash {
             $ret->{$k} = [
                 map { ref $_ ? @$_ : $_ } @items
             ];
+            if(@{$ret->{$k}} == 1) {
+                $ret->{$k} = $ret->{$k}->[0];
+            }
+            elsif(@{$ret->{$k}} == 0) {
+                delete $ret->{$k};
+            }
         }
     }
 
@@ -547,7 +678,7 @@ use vars qw(@ISA);
 
 use Error ();
 
-@ISA = qw(Error);
+@StateMachine::Gestinanna::Exception::ISA = qw(Error);
 
 use overload 'bool' => 'bool';
 use strict;
@@ -637,9 +768,14 @@ to a hash whose keys are the states the edges are to.  These keys
 then point to a hash with a description of the requirements for 
 an edge transition
 
-The requirements should be suitable for giving to 
-L<Data::FormValidator|Data::FormValidator>.  See 
-L<Data::FormValidator> for more information.
+In addition to requirements that should be suitable for 
+L<Data::FormValidator|Data::FormValidator> (see 
+L<Data::FormValidator> for more information) the C<overrides> key is available.
+This is a hash of variables to values.  The values will override 
+any data associated with the variables for deciding if that 
+particular transition is appropriate.  The data is passed along 
+to the transition handler.  See L<StateMachine::Gestinanna::Examples::MailForm> 
+for an example of how this can be used.
 
 =head2 Code Run During a Transition
 
@@ -648,11 +784,15 @@ this section, replace C<from> and C<to> in the method names with
 the names of the appropriate states.
 
 If the code needs to preempt the expected target state, it can 
-throw a StateMachine::Gestinanna::Exception with the new target 
+return the name of the new
 state.  The state machine will start over with the new target state.
 
-When no error states are thrown and the transition is successful, 
-the state machine will halt.
+When no error states are returned (C<undef> is returned) and the 
+transition is successful, the state machine will halt.
+
+Data associated with the error state may be stored in the `error' data root before returning the error state.
+
+ $sm -> add_data('error', { hash of data };
 
 =over 4
 
@@ -755,6 +895,15 @@ stored in the state machine.  The data will be placed under
 $root.  If $root contains periods (.), it will be split on them 
 and serve as a set of keys into a multi-dimensional hash.
 
+=head2 can ($old_state, $new_state)
+
+This will return a code reference if code is defined to be run on 
+a transition from C<$old_state> to C<$new_state>.  This will follow 
+ISA and HASA inheritance.  Code references are cached.
+
+If called with one argument, this will defer to C<UNIVERSAL::can>.  
+This will not follow HASA inheritance.
+
 =head2 clear_data ($root)
 
 This will remove all data under $root that is stored in the state 
@@ -795,8 +944,8 @@ code triggered by the transition.
 
 =item error
 
-This is any data specified in the error state transition object 
-(the thrown StateMachine::Gestinanna::Exception).
+This is any data specified for the error state transition
+(the returned error state from a transition handler).
 
 =back 4
 
@@ -818,7 +967,8 @@ involves caching inherited information and creating the
 validators.  Any changes to the %EDGES hash will be ignored after 
 this takes place.
 
-The %config hash may have the following items.
+The %config hash may have the following items.  Note that 
+L<Class::Container|Class::Container> is used as the parent class.
 
 =over 4
 
@@ -873,6 +1023,7 @@ validator for the new state.
 L<Class::Container>,
 L<Data::FormValidator>,
 L<Error>,
+L<StateMachine::Gestinanna::Examples::MailForm>,
 L<YAML>,
 the test scripts in the distribution.
 
