@@ -1,6 +1,9 @@
 Changes for StateMachine::Gestinanna
 ------------------------------------
 
+0.05 - Added Class::Container to make creation of new state machine 
+         types (vs. applications) easier
+
 0.04 - Corrected incorrect invocation of transtion handlers
        Convenience functions (selected_state, invalid, missing, etc.)
        More documentation

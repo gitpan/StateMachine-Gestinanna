@@ -66,9 +66,9 @@ $sm -> process({
 });
 
 if($sm -> state eq 'state2') {
-    print "ok\n";
+    print "ok 2\n";
 } else {
-    print "not ok\n";
+    print "not ok 2\n";
     print STDERR "state: ", $sm -> state, "\n";
 }
 
@@ -79,9 +79,9 @@ my $sm2 = My::Third::Machine -> new(
 );
 
 if($sm2 -> state eq 'state2') {
-    print "ok\n";
+    print "ok 3\n";
 } else {
-    print "not ok\n";
+    print "not ok 3\n";
     print STDERR "state: ", $sm2 -> state, "\n";
 }
 

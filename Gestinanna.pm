@@ -1,13 +1,30 @@
+# the ::CC package avoids a couple of greps and ->can() on @ISA
+package StateMachine::Gestinanna::CC;
+
+@ISA = qw(Class::Container);
+
+sub _generate_states { }
+
+sub _transit_hasa { }
+
 package StateMachine::Gestinanna;
 
 use Data::FormValidator ();
 #use Data::Dumper;  # here for testing/development - comment out for release
 use YAML ();
+use Class::Container;
+use Params::Validate qw(:types);
 
-$VERSION = '0.04';
+@ISA = qw(StateMachine::Gestinanna::CC);
+
+__PACKAGE__ -> valid_params(
+    context => { type => SCALAR, default => YAML::Dump({}), optional => 1 },
+);
+
+$VERSION = '0.05';
 
 { no warnings;
-$REVISION = sprintf("%d.%d", q$Id: Gestinanna.pm,v 1.12 2002/08/06 14:01:48 jgsmith Exp $ =~ m{(\d+).(\d+)});
+$REVISION = sprintf("%d.%d", q$Id: Gestinanna.pm,v 1.15 2002/08/15 21:38:41 jgsmith Exp $ =~ m{(\d+).(\d+)});
 }
 
 use strict;
@@ -375,7 +392,7 @@ sub _generate_states {
     return if defined %{"${class}::EDGES_CACHE"};
 
     # need to collect state transitions and feed them into Data::FormValidator
-    # able to inherit: SUPER, ALL, NONE (default for now)
+    # able to inherit: SUPER, ALL, NONE (ALL is default for now)
     # need this at the state->state level
     $_ -> _generate_states foreach @{"${class}::ISA"};
     ${"${class}::HASA"}{$_} -> _generate_states(${"${class}::HASA"}{$_}) foreach keys %{"${class}::HASA"};
@@ -503,16 +520,15 @@ sub _deep_merge_hash {
 }
 
 sub new {
-    my($class, %p) = @_;
+    my $class = shift;
 
     $class = ref $class || $class;
 
     $class -> generate_validators unless defined ${"${class}::VALIDATORS"};
  
-    my $self = bless { } => $class;
+    my $self = $class -> SUPER::new(@_);
 
-    $self -> context($p{context}) if $p{context};
-    $self -> state($p{state}) if $p{state};
+    $self -> context($self -> {context}) if $self->{context};
 
     return $self;
 }
@@ -549,7 +565,6 @@ sub data {
 
     return $self -> {'-data'} || { };
 }
-
 
 1;
 
@@ -597,6 +612,13 @@ StateMachine::Gestinanna - provides context and state machine for wizard-like ap
 StateMachine::Gestinanna is designed to make creation of web-based 
 wizards almost trivial.  The module supports inheritance of state 
 information and methods so classes of wizards may be created.
+
+StateMachine::Gestinanna inherits from L<Class::Container|Class::Container>.  
+This allows specialized state machine classes to be created that 
+do more than just manage a state.  For example, the 
+L<Gestinanna web application framework|Gestinanna>
+specializes StateMachine::Gestinanna to 
+provide support for views using the Template Toolkit.
 
 =head1 CREATING A STATE MACHINE
 
@@ -848,6 +870,7 @@ validator for the new state.
 
 =head1 SEE ALSO
 
+L<Class::Container>,
 L<Data::FormValidator>,
 L<Error>,
 L<YAML>,
