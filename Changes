@@ -1,0 +1,9 @@
+Changes for StateMachine::Gestinanna
+------------------------------------
+
+0.03 - More complete support for HAS-A relationships
+       More documentation
+
+0.02 - Initial support for HAS-A relationships
+
+0.01 - Initial release

@@ -176,7 +176,7 @@ if($state_to_state1) {
 my $sm4;
 
 eval {
-   $sm4 = My::Fifth::Machine -> new();
+   $sm4 = My::Sixth::Machine -> new();
 };
     
 if($@) {

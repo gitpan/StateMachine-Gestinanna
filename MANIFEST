@@ -1,3 +1,4 @@
+Changes
 Gestinanna.pm
 MANIFEST
 MANIFEST.SKIP
@@ -8,3 +9,4 @@ t/10create.t
 t/20inherit.t
 t/30context.t
 t/40transition.t
+t/50exception.t

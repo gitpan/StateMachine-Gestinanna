@@ -4,10 +4,10 @@ use Data::FormValidator ();
 #use Data::Dumper;  # here for testing/development - comment out for release
 use YAML ();
 
-$VERSION = '0.02';
+$VERSION = '0.03';
 
 { no warnings;
-$REVISION = sprintf("%d.%d", q$Id: Gestinanna.pm,v 1.7 2002/08/02 16:24:01 jgsmith Exp $ =~ m{(\d+).(\d+)});
+$REVISION = sprintf("%d.%d", q$Id: Gestinanna.pm,v 1.10 2002/08/02 21:24:51 jgsmith Exp $ =~ m{(\d+).(\d+)});
 }
 
 use strict;
@@ -21,70 +21,87 @@ no strict 'refs';
 # $post_func - code to run on transition from $ostate
 # $trans_func has precedence over ${pre|post}_func
 sub _transit {
-    my($self, $nstate) = @_;
+    my($self, $ostate, $nstate) = @_;
 
-    my $ostate = $self -> state;
     my $code_run = 0;
     my $pre_func = "pre_${nstate}";
 
     if($ostate) {
-        my $trans_func = "${ostate}_to_${nstate}";
-        my $post_func = "post_${ostate}";
-
-        if($self -> can($trans_func)) {
-            $self -> $trans_func;
-            $code_run = 1;
+        if($code_run = $self -> can("${ostate}_to_${nstate}")) {
+            $code_run->();
         }
         else {
-            $self -> $post_func if $self->can($post_func);
-            $self -> $pre_func if $self->can($pre_func);
-            $code_run = 1 if $self->can($post_func) || $self->can($pre_func);
+            $code_run->() if $code_run = $self -> can("post_${ostate}");
+            $code_run->() if $code_run = $self -> can($pre_func);
         }
     }
     else {
-        if($self->can($pre_func)) {
-            $self -> $pre_func;
-            $code_run = 1;
+        $code_run->() if $code_run = $self->can($pre_func);
+    }
+
+    $code_run = $self -> _transit_hasa($ostate, $nstate) unless($code_run);
+
+    #$self -> state($nstate);
+    return $code_run;
+}
+
+sub _transit_hasa {
+    my($self, $ostate, $nstate) = @_;
+
+    my $orig_class = ref $self || $self;
+    my $code_run = 0;
+
+    # looks like HASAs are expensive
+    foreach my $p (@{"${orig_class}::HASA_KEYS_SORTED"}) {
+        next unless $nstate =~ m{^${p}_};
+
+        bless $self => ${"${orig_class}::HASA"}{$p};
+
+        my($realoldstate, $realnewstate) = ($ostate, $nstate);
+        $nstate =~ s{^${p}_}{};
+        $ostate =~ s{^${p}_}{};
+
+        eval {
+            $code_run = $self -> _transit($ostate, $nstate);
+            bless $self => $orig_class;
+            return 1 if $code_run;
+        };
+
+        if($@) {
+            bless $self => $orig_class;
+            die $@ unless ref $@;
+            die $@ unless $@ -> isa('StateMachine::Gestinanna::Exception');
+            # should never get to the rest of this
+            throw StateMachine::Gestinanna::Exception (
+                -state => $p . "_" . $@->state,
+                -data => $@ -> data
+            );
         }
+
+        $nstate = $realnewstate;
+        $ostate = $realoldstate;
+        bless $self => $orig_class;
+        last;
     }
 
     unless($code_run) {
-        # check for hasa relationship
-        my $orig_class = ref $self || $self;
-
-        # looks like HASAs are expensive
-        my @ps = sort { length $b <=> length $a } keys %{"${orig_class}::HASA"};
-        foreach my $p (@ps) {
-            next unless $nstate =~ m{^${p}_};
-            my $c = ${"${orig_class}::HASA"}{$p};
+        foreach my $c (@{"${orig_class}::ISA"}) {
             bless $self => $c;
-            $nstate =~ s{^${p}_}{};
-            my $realoldstate = $ostate;
-            $ostate =~ s{^${p}_}{};
-            $self -> state($ostate);
             eval {
-                $self -> _transit($nstate);
+                $code_run = $self -> _transit_hasa($ostate, $nstate);
                 bless $self => $orig_class;
-                return $self -> state($p . "_" . $self->state);
+                return 1 if $code_run;
             };
             if($@) {
                 bless $self => $orig_class;
-                $self -> state($realoldstate);
-                die $@ unless ref $@;
-                die $@ unless $@ -> isa('StateMachine::Gestinanna::Exception');
-                # should never get to the rest of this
-                throw StateMachine::Gestinanna::Exception (
-                    -state => $p . "_" . $@->state,
-                    -data => $@ -> data
-                );
-            }
-            $nstate = "${p}_$nstate";
-            bless $self => $orig_class;
-            $self -> state($realoldstate);
-            last;
+                die $@;
+            };
+            last if $code_run;
         }
+        bless $self => $orig_class;
     }
-    return $self -> state($nstate);
+
+    return $code_run;
 }
 
 # transit() will try to go to the new $nstate, and will process any ErrorState transitions requested
@@ -95,7 +112,10 @@ sub transit {
     my($self, $nstate) = @_;
 
     while(defined $nstate) {
-        eval { $self -> _transit($nstate) };
+        eval { 
+            $self -> _transit($self -> state, $nstate);
+            $self -> state($nstate);
+        };
         last unless $@;
         die $@ unless ref $@;
         die $@ unless $@->isa('StateMachine::Gestinanna::Exception');
@@ -300,6 +320,7 @@ sub generate_validators {
 
     my $states = \%{"${class}::EDGES_CACHE"};
     %{"${class}::VALIDATORS"} = ( );
+    @{"${class}::HASA_KEYS_SORTED"} = sort { length $b <=> length $a } keys %{"${class}::HASA"};
     my $vs = \%{"${class}::VALIDATORS"};
 
     while(my($state, $reqs) = each %$states) {
@@ -626,7 +647,8 @@ The following values are recognized.
 
 This is the default behavior.  All edges from all the classes in 
 C<@ISA> are inherited.  If the same edge is in multiple classes, 
-the requirements are merged.
+the requirements are merged (may be modified by specifying the 
+_INHERIT flag in the requirements section for a particular edge).
 
 =item SUPER
 
@@ -666,6 +688,18 @@ object will not show the same behavior.
 
 =head1 METHODS
 
+=head2 add_data ($root, $data)
+
+This will add the information in $data to the internal data 
+stored in the state machine.  The data will be placed under 
+$root.  If $root contains periods (.), it will be split on them 
+and serve as a set of keys into a multi-dimensional hash.
+
+=head2 clear_data ($root)
+
+This will remove all data under $root that is stored in the state 
+machine.
+
 =head2 context ($context)
 
 If called with no arguments, returns a string representing the 
@@ -674,6 +708,37 @@ argument, restores the state machine to the context represented
 by C<$context>.
 
 The context is serialized using L<YAML|YAML>.
+
+=head2 data ($root)
+
+This will retrieve a hash of data stored in the state machine.  
+The $root can be used to retrieve only a sub-set of the data.
+
+Parts of the $root may be separated by periods (.).  For example,
+C<data("foo.bar")> will return $data{foo}{bar}.  C<data("foo")> 
+will retrieve anything added with C<add_data("foo", {})>.
+
+The following roots are used by the state machine:
+
+=over 4
+
+=item in
+
+This is the data given to the C<process> method.  This is used to 
+determine which state the machine should transition to.
+
+=item out
+
+This is the data processed by the Data::FormValidator object for 
+the selected state.  Additional processing may take place in the 
+code triggered by the transition.
+
+=item error
+
+This is any data specified in the error state transition object 
+(the thrown StateMachine::Gestinanna::Exception).
+
+=back 4
 
 =head2 new (%config)
 
