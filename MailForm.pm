@@ -101,7 +101,7 @@ sub connect_smtp {
 
     my $smtp_connection;
 
-    if (length($smtp_host)) {
+    if (defined $smtp_host && length($smtp_host)) {
         # Use provided host
         $smtp_connection = Net::SMTP->new($smtp_host);
         if(!defined($smtp_connection)) {
@@ -150,7 +150,7 @@ sub build_msgbody {
     #
     my $env_fields = $params -> {'env_fields'};
     # Do we actually have any env data requested?
-    if (@$env_fields) {
+    if (@{$env_fields || []}) {
         my $ef_count = 1;
         $msgbody .= "Form environment data:\n\n";
         foreach my $field (@$env_fields) {
@@ -274,8 +274,12 @@ L<StateMachine::Gestinanna>.
 
 =head1 AUTHOR
 
-James G. Smith, <jsmith@cpan.org>
+James G. Smith <jsmith@cpan.org>
 
 =head1 COPYRIGHT
 
-Copyright (C) 2002  Texas A&M University.  All rights reserved.
+Copyright (C) 2002-2004 Texas A&M University.  All Rights Reserved.
+    
+This module is free software; you can redistribute it and/or
+modify it under the same terms as Perl itself.
+

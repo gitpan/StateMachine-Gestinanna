@@ -27,6 +27,8 @@ for my $i (1..$#TESTS) {
             warn "\n--- DEBUG for test $i\n";
             local($StateMachine::Gestinanna::DEBUG) = 1;
             local($StateMachine::Gestinanna::CC::DEBUG) = 1;
+            local($StateMachine::Gestinanna::DEBUG) = 1;
+            local($StateMachine::Gestinanna::CC::DEBUG) = 1;
             eval {
                 $TESTS[$i] -> ();
             };

@@ -11,8 +11,7 @@ sub _generate_states { }
 
 sub _transit_hasa { }
 
-
-$DEBUG = 0;
+#$DEBUG = 1;
 
 sub _DEBUG {
     return unless $DEBUG;
@@ -43,13 +42,13 @@ __PACKAGE__ -> valid_params(
     context => { type => SCALAR, default => YAML::Dump({}), optional => 1 },
 );  
     
-$VERSION = '0.06';
+$VERSION = '0.07';
         
 { no warnings;
-$REVISION = sprintf("%d.%d", q$Id: Gestinanna.pm,v 1.17 2002/10/25 06:05:45 jgsmith Exp $ =~ m{(\d+).(\d+)});
+$REVISION = sprintf("%d.%d", q$Id: Gestinanna.pm,v 1.20 2004/04/23 16:26:41 jgsmith Exp $ =~ m{(\d+).(\d+)});
 }
     
-$DEBUG = 0;
+#$DEBUG = 1;
         
 sub _DEBUG {
     return unless $DEBUG;
@@ -66,6 +65,8 @@ sub can {
     # we cache this in ${class}::CAN;
     my $class = ref $self || $self;
 
+    $ostate = '' unless defined $ostate;
+    $nstate = '' unless defined $nstate;
     _DEBUG("Looking for ${ostate}:${nstate} in $class\n");
     my $code = ${"${class}::CAN"}{"${ostate}:${nstate}"};
     _DEBUG("Found code ($code) for ${ostate}:${nstate} in cache\n") if $code;
@@ -116,6 +117,8 @@ sub _can_hasa {
     my($self, $ostate, $nstate) = @_;
 
     my $class = ref $self || $self;
+    $ostate = '' unless defined $ostate;
+    $nstate = '' unless defined $nstate;
     _DEBUG("_can_hasa($class, $ostate, $nstate)\n");
     my $code = 0;
 
@@ -204,6 +207,7 @@ sub transit {
         eval { 
             _DEBUG("Transit: $ostate -> $nstate\n");
             $ret = $self -> _transit($ostate, $nstate);
+            $ret = '' unless defined $ret;
             _DEBUG("Transition returns [$ret]\n");
             $self -> state($nstate) unless $ret;
         };
@@ -223,7 +227,36 @@ sub transit {
         else {
             $nstate = undef;
         }
+        # check aliases
+        $nstate = $self -> alias_state($nstate) if defined $nstate;
     }
+}
+
+# undef == state doesn't exist
+# 0 == state exists but no transitions
+# 1 == state exists and has transitions
+sub is_not_terminal_state {
+    my($self, $state) = @_;
+
+    my $package = ref($self) || $self;
+    no strict 'refs';
+    #warn "package: $package\n";
+
+    #warn Data::Dumper -> Dump([\%{"${package}::EDGES_CACHE"}]), "\n";
+
+    return unless exists ${"${package}::EDGES_CACHE"}{$state};
+    my @states = keys %{ ${"${package}::EDGES_CACHE"}{$state}{'profile'} || {} };
+    #warn "Found ", scalar(@states), " states to transition to\n";
+    return 0 != scalar(keys %{ ${"${package}::EDGES_CACHE"}{$state}{'profile'} || {}});
+}
+
+sub alias_state {
+    my($self, $state) = @_;
+
+    my $package = ref($self) || $self;
+    #warn "aliases: $package - $state\n";
+    return ${"${package}::ALIASES"}{$state} if exists ${"${package}::ALIASES"}{$state};
+    return $state;
 }
 
 # get/set the current state -- no transition is implied
@@ -232,7 +265,7 @@ sub state {
     return $self -> {context} -> {state} unless @_; 
     return( (
         $self -> {context} -> {state},
-        $self -> {context} -> {state} = shift,
+        $self -> {context} -> {state} = $self -> alias_state(shift),
     )[0]);
 }
 
@@ -329,9 +362,15 @@ sub process {
 
     my $best = $self -> select_state;
 
-    $self -> add_data('out', $best -> {valid});
+    if($best -> {num_missing} || $best -> {num_invalid}) {
+        $self -> add_data('missing', $best -> {missing});
+        $self -> add_data('invalid', $best -> {invalid});
+    }
+    else {
+        $self -> add_data('out', $best -> {valid});
 
-    $self -> transit($best -> {state});
+        $self -> transit($best -> {state});
+    }
 }
 
 sub _flatten_hash {
@@ -363,11 +402,9 @@ sub select_state {
     my $args = _flatten_hash($self->data('in'));
 
     my $na = scalar(keys %$args)+1;
-    my $best = { score => -1, state => $self->state, missing => [ keys %$args ], };
+    my $best = { score => -1, state => $self->state }; # , num_missing => scalar(keys %$args), };
 
-    $self -> {context} -> {best} = {
-        missing => $best -> {missing},
-    };
+    $self -> {context} -> {best} = \%{ $best };
 
     return $best unless $na > 1;
     
@@ -388,17 +425,18 @@ sub select_state {
         _DEBUG("$validator -> validate(..., $v); ... => \n", Data::Dumper->Dump([{ %$args, %{ $cache->{overrides}->{$v} || {}}}]), "\n");
         my($valid, $missing, $invalid, $unknown);
         eval {
-        ($valid, $missing, $invalid, $unknown) = 
-            $validator->validate({ %$args, %{ $cache->{overrides}->{$v} || {}}}, $v); };
+            ($valid, $missing, $invalid, $unknown) = 
+                $validator->validate({ %$args, %{ $cache->{overrides}->{$v} || {}}}, $v); 
+        };
         warn "$@\n" if $@;
 
         _DEBUG("Validator: ", Data::Dumper -> Dump([$validator]), "\n");
                 
         my($nv, $nm, $ni, $nu) = ( 
             scalar(keys %$valid),
-            scalar(@$missing),
-            scalar(@$invalid),
-            scalar(@$unknown),
+            (UNIVERSAL::isa($missing, 'ARRAY') ? scalar(@$missing) : scalar(keys %$missing)) || 0,
+            (UNIVERSAL::isa($invalid, 'ARRAY') ? scalar(@$invalid) : scalar(keys %$invalid)) || 0,
+            scalar(@$unknown) || 0,
         );
 
         my $score = ($nv+1) * $na2;
@@ -406,7 +444,7 @@ sub select_state {
         $score /= ($ni+1);
         $score /= ($nu+1);
 
-        if(($score >= $best->{score} && ($nm <= @{$best -> {missing}||[]}))) {
+        if($best->{score} == -1 || ($score >= $best->{score} && (defined($best->{num_missing}) && $nm <= $best -> {num_missing}))) {
             if($ni) {
                 $best -> {invalid} = $invalid;
             }
@@ -419,6 +457,10 @@ sub select_state {
                     invalid => $invalid,
                     unknown => $unknown,
                     state => $v,
+                    num_missing => $nm,
+                    num_invalid => $ni,
+                    num_valid => $nv,
+                    num_unknown => $nu,
                 };
             }
             last if $score >= $bestscore;
@@ -431,6 +473,8 @@ sub select_state {
         unknown => $best -> {unknown},
         state   => $best -> {state},
     };
+
+    #warn "Best: ", Data::Dumper -> Dump([$best]);
 
     return $best;
 }
@@ -505,6 +549,7 @@ sub _generate_states {
 
     my $cache = \%{"${class}::EDGES_CACHE"};
     my $states = \%{"${class}::EDGES"};
+    _DEBUG("edges: " . Data::Dumper -> Dump([$states]));
     my $inherit = [$states -> {_INHERIT} || 'ALL'];
     my @states;
 
@@ -549,6 +594,7 @@ sub _generate_states {
                 map { $_ => $def -> {$_} -> {overrides} } keys %$def
             },
         );
+        _DEBUG("Overrides: " . Data::Dumper -> Dump([$cache->{$state}->{overrides}]));
         delete $cache->{$state}->{profile} -> {overrides};
         shift @$inherit if defined $def -> {_INHERIT};
     }
@@ -662,6 +708,12 @@ sub new {
     $self -> context($self -> {context}) if $self->{context};
 
     return $self;
+}
+
+sub clear_context {
+    my $self = shift;
+
+    $self -> {context} = { };
 }
 
 sub context {
@@ -814,7 +866,7 @@ if it is available.
 If the C<from_to_to> method is unavailable, this method is called, 
 if it is available.  
 
-=back 4
+=back
 
 =head2 Throwing Exceptions
 
@@ -859,7 +911,7 @@ C<@ISA> tree that has a particular edge describes that edge.
 
 This is used to keep any edges from being inherited.
 
-=back 4
+=back
 
 Note that this setting does not affect the inheritance of class 
 methods.  The code triggered by a transition follows the 
@@ -947,7 +999,7 @@ code triggered by the transition.
 This is any data specified for the error state transition
 (the returned error state from a transition handler).
 
-=back 4
+=back
 
 =head2 invalid ( )
 
@@ -982,7 +1034,7 @@ This can be used to set the machine to a previous state.
 This will set the machine to the given state regardless of the 
 context.
 
-=back 4
+=back
 
 =head2 process ($data)
 
@@ -1030,10 +1082,10 @@ the test scripts in the distribution.
 =head1 AUTHOR
 
 James G. Smith <jsmith@cpan.org>
-    
+
 =head1 COPYRIGHT
-    
-Copyright (C) 2002 Texas A&M University.  All Rights Reserved.
+
+Copyright (C) 2002-2004 Texas A&M University.  All Rights Reserved.
 
 This module is free software; you can redistribute it and/or
 modify it under the same terms as Perl itself.

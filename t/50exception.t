@@ -2,6 +2,8 @@ use StateMachine::Gestinanna;
 
 package My::First::Machine;
 
+our(%EDGES);
+
 @ISA=qw(StateMachine::Gestinanna);
 
 %EDGES = (
@@ -24,6 +26,8 @@ package My::First::Machine;
 );
 
 package My::Second::Machine;
+
+our(%EDGES);
 
 @ISA=qw(StateMachine::Gestinanna);
 
@@ -50,6 +54,8 @@ sub start_to_state1 {
 package main;
 
 my($sm, $message);
+
+our(@TESTS);
 
 @TESTS = (
     sub {},

@@ -1,6 +1,9 @@
 Changes for StateMachine::Gestinanna
 ------------------------------------
 
+0.07 - Fairly minor fixes to avoid warnings
+       Fixed a possible bug in the state selection code
+
 0.06 - Added can(,) method
        Added overrides key for edge transition definitions
        Added Mail Form example

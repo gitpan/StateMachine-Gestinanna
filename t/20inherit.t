@@ -4,6 +4,8 @@ use StateMachine::Gestinanna;
 
 package My::First::Machine;
 
+our(%EDGES);
+
 @ISA=qw(StateMachine::Gestinanna);
 
 %EDGES = (
@@ -29,6 +31,8 @@ package My::First::Machine;
 
 package My::Second::Machine;
 
+our(%EDGES);
+
 @ISA=qw(StateMachine::Gestinanna);
 
 %EDGES = (
@@ -52,6 +56,8 @@ package My::Third::Machine;
 
 package My::Fourth::Machine;
 
+our(@ISA, %EDGES);
+
 @ISA=qw(My::First::Machine My::Second::Machine);
 
 %EDGES = (
@@ -61,6 +67,8 @@ package My::Fourth::Machine;
 ######
 
 package My::Fifth::Machine;
+
+our(@ISA, %HASA);
 
 @ISA = qw(StateMachine::Gestinanna);
 
@@ -74,6 +82,8 @@ package My::Fifth::Machine;
 package main;
 
 my($sm, $sm2, $sm3, $message);
+
+our(@TESTS);
 
 @TESTS = (
     sub { },

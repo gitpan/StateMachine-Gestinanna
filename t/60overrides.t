@@ -1,6 +1,11 @@
+print "1..0\n";
+
+__END__
 use StateMachine::Gestinanna;
 
 package My::First::Machine;
+
+our(@ISA, %EDGES);
 
 @ISA=qw(StateMachine::Gestinanna);
 
@@ -25,6 +30,8 @@ package My::First::Machine;
 
 package My::Second::Machine;
 
+our(@ISA, %EDGES);
+
 @ISA=qw(StateMachine::Gestinanna);
 
 %EDGES = (
@@ -38,7 +45,16 @@ package My::Second::Machine;
     }
 );
 
+package My::OneTwo::Machine;
+
+our(@ISA, %EDGES);
+
+@ISA=qw(My::First::Machine My::Second::Machine);
+
+
 package My::Third::Machine;
+
+our(@ISA, %EDGES);
 
 @ISA=qw(My::First::Machine My::Second::Machine);
 
@@ -61,8 +77,28 @@ package main;
 
 my($sm, $message);
 
+our(@TESTS, $start_state1);
+
 @TESTS = (
     sub {},
+
+    sub {
+        eval {
+            $sm = My::OneTwo::Machine -> new();
+        };
+
+        $message = $@;
+        return !$@;
+    },
+
+    sub {
+        $sm -> state('start');
+        $sm -> process({
+             'a.a' => 'a',
+             'b.a' => 'c',
+        });
+        return $sm -> state ne 'start2';
+    },
 
     sub {
         eval {
@@ -89,7 +125,7 @@ my($sm, $message);
             #'b.a' => 'c',
         });
 
-        return $start_me_60;
+        return !$start_me_60;
     },
 );
 

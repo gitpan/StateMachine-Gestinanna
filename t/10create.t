@@ -2,6 +2,8 @@ use StateMachine::Gestinanna;
 
 package My::Machine;
 
+our(@ISA, %EDGES);
+
 @ISA=qw(StateMachine::Gestinanna);
 
 %EDGES = (
@@ -27,6 +29,7 @@ package main;
 
 
 my($sm, $message);
+our(@TESTS);
 
 @TESTS = (
     sub {},
@@ -67,6 +70,8 @@ for my $i (1..$#TESTS) {
         if($ENV{DEBUG}) {
             $message = undef;
             warn "\n--- DEBUG for test $i\n";
+            local($StateMachine::Gestinanna::DEBUG) = 1;
+            local($StateMachine::Gestinanna::CC::DEBUG) = 1;
             local($StateMachine::Gestinanna::DEBUG) = 1;
             local($StateMachine::Gestinanna::CC::DEBUG) = 1;
             eval {

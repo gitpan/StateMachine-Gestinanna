@@ -13,3 +13,4 @@ t/40transition.t
 t/50exception.t
 t/60overrides.t
 t/900mailform.t
+t/999pod.t

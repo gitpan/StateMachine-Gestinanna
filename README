@@ -1,5 +1,5 @@
                   -----------------------------
-                  StateMachine::Gestinanna 0.06
+                  StateMachine::Gestinanna 0.07
                   -----------------------------
 
 StateMachine::Gestinanna is a fairly simple state machine 
@@ -44,9 +44,9 @@ machine.  See the t/900mailform.t test script for an example of how to
 drive it.
 
 
-Copyright (C) 2002  Texas A&M University.  All Rights Reserved.
+Copyright (C) 2002-2004  Texas A&M University.  All Rights Reserved.
 
 This program is free software; you can redistribute it and/or modify it
 under the same terms as Perl itself.
 
-$Id: README,v 1.7 2002/10/25 06:05:45 jgsmith Exp $
+$Id: README,v 1.8 2004/04/23 16:26:41 jgsmith Exp $

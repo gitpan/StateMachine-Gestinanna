@@ -2,6 +2,8 @@ use StateMachine::Gestinanna;
 
 package My::First::Machine;
 
+our(%EDGES);
+
 @ISA=qw(StateMachine::Gestinanna);
 
 %EDGES = (
@@ -30,6 +32,8 @@ sub start_to_state1 {
 
 package My::Second::Machine;
 
+our(%EDGES);
+
 @ISA=qw(StateMachine::Gestinanna);
 
 %EDGES = (
@@ -44,6 +48,8 @@ package My::Second::Machine;
 );
 
 package My::Fourth::Machine;
+
+our(%EDGES);
 
 @ISA=qw(My::First::Machine My::Second::Machine);
 
@@ -64,6 +70,8 @@ sub pre_state11 {
 ######
 
 package My::Fifth::Machine;
+
+our(%HASA);
 
 @ISA = qw(StateMachine::Gestinanna);
 
@@ -87,11 +95,13 @@ package main;
 
 my($sm2, $sm3, $sm4, $message);
 
+our(@TESTS);
+
 @TESTS = (
     sub { },  # does nothing except let us start at 1
 
     sub {  # 1
-        $sm2;
+        #$sm2;
         eval {
             $sm2 = My::Fourth::Machine -> new();
         };
